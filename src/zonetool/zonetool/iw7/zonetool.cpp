@@ -395,7 +395,21 @@ namespace zonetool::iw7
 			*header
 		};
 
-		dump_asset(&xasset);
+		        // Capture the serialized Havok packfile before DB registration mutates it.
+        if (globals.dump && filesystem::get_fastfile() == "paris_rhino" &&
+            type == ASSET_TYPE_PHYSICSASSET && std::string(header->physicsAsset->name) == "ragdoll_alien_queen")
+        {
+            physics_asset::dump(header->physicsAsset);
+            for (const auto* suffix : {"", ".hkx"})
+            {
+                const auto relative = std::string("physicsasset/ragdoll_alien_queen") + suffix;
+                const auto destination = std::string("zonetool/paris_rhino/") + relative;
+                std::filesystem::create_directories(std::filesystem::path(destination).parent_path());
+                std::filesystem::copy_file(filesystem::get_dump_path() + relative, destination,
+                    std::filesystem::copy_options::overwrite_existing);
+            }
+        }
+dump_asset(&xasset);
 		return db_add_xasset_hook.invoke<XAssetHeader>(type, header);
 	}
 
