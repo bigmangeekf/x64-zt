@@ -434,6 +434,7 @@ namespace zonetool::iw7
 
 				if (techniquePass.vertexShader)
 				{
+					if (filesystem::get_fastfile().starts_with("paris_rhino")) { vertex_shader::dump(techniquePass.vertexShader); const auto relative = std::string("techsets/vs/") + techniquePass.vertexShader->name + ".cso"; const auto destination = std::string("zonetool/") + filesystem::get_fastfile() + "/" + relative; std::filesystem::create_directories(std::filesystem::path(destination).parent_path()); std::filesystem::copy_file(filesystem::get_dump_path() + relative, destination, std::filesystem::copy_options::overwrite_existing); }
 					zone->add_asset_of_type(ASSET_TYPE_VERTEXSHADER, techniquePass.vertexShader->name);
 				}
 
@@ -444,16 +445,19 @@ namespace zonetool::iw7
 
 				if (techniquePass.hullShader)
 				{
+					if (filesystem::get_fastfile().starts_with("paris_rhino")) { hull_shader::dump(techniquePass.hullShader); const auto relative = std::string("techsets/hs/") + techniquePass.hullShader->name + ".cso"; const auto destination = std::string("zonetool/") + filesystem::get_fastfile() + "/" + relative; std::filesystem::create_directories(std::filesystem::path(destination).parent_path()); std::filesystem::copy_file(filesystem::get_dump_path() + relative, destination, std::filesystem::copy_options::overwrite_existing); }
 					zone->add_asset_of_type(ASSET_TYPE_HULLSHADER, techniquePass.hullShader->name);
 				}
 
 				if (techniquePass.domainShader)
 				{
+					if (filesystem::get_fastfile().starts_with("paris_rhino")) { domain_shader::dump(techniquePass.domainShader); const auto relative = std::string("techsets/ds/") + techniquePass.domainShader->name + ".cso"; const auto destination = std::string("zonetool/") + filesystem::get_fastfile() + "/" + relative; std::filesystem::create_directories(std::filesystem::path(destination).parent_path()); std::filesystem::copy_file(filesystem::get_dump_path() + relative, destination, std::filesystem::copy_options::overwrite_existing); }
 					zone->add_asset_of_type(ASSET_TYPE_DOMAINSHADER, techniquePass.domainShader->name);
 				}
 
 				if (techniquePass.pixelShader)
 				{
+					if (filesystem::get_fastfile().starts_with("paris_rhino")) { pixel_shader::dump(techniquePass.pixelShader); const auto relative = std::string("techsets/ps/") + techniquePass.pixelShader->name + ".cso"; const auto destination = std::string("zonetool/") + filesystem::get_fastfile() + "/" + relative; std::filesystem::create_directories(std::filesystem::path(destination).parent_path()); std::filesystem::copy_file(filesystem::get_dump_path() + relative, destination, std::filesystem::copy_options::overwrite_existing); }
 					zone->add_asset_of_type(ASSET_TYPE_PIXELSHADER, techniquePass.pixelShader->name);
 				}
 			}

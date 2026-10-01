@@ -1153,6 +1153,42 @@ namespace zonetool::iw7
 	{
 		// Execute command line commands
 		auto args = get_command_line_arguments();
+        if (std::find(args.begin(), args.end(), "-rhino-extract") != args.end())
+        {
+            filesystem::set_fastfile("paris_rhino");
+            globals.target_game = game::iw7;
+            globals.dump = true;
+            asset_type_filter = {ASSET_TYPE_IMAGE, ASSET_TYPE_VERTEXSHADER, ASSET_TYPE_HULLSHADER,
+                ASSET_TYPE_DOMAINSHADER, ASSET_TYPE_PIXELSHADER, ASSET_TYPE_COMPUTESHADER};
+            for (const auto* zone : {"code_post_gfx", "global", "common", "global_mp", "global_cp", "common_mp", "common_cp", "cp_final"})
+            {
+                for (const auto& candidate : {std::string("techsets_") + zone, std::string(zone), std::string("patch_") + zone})
+                    if (zone_exists(candidate)) load_zone(candidate, DB_LOAD_SYNC);
+            }
+            globals.dump = false;
+            asset_type_filter.clear();
+            auto* table = db_find_x_asset_header_safe(ASSET_TYPE_STRINGTABLE, "mp/dlc4_agent_definition.csv").stringTable;
+            if (!table || table->columnCount < 14) throw std::runtime_error("Rhino definition table missing");
+            std::string row;
+            int matches = 0;
+            for (int r = 0; r < table->rowCount; ++r)
+            {
+                auto* cells = table->values + r * table->columnCount;
+                if (!cells[2].string || std::string(cells[2].string) != "alien_rhino") continue;
+                ++matches;
+                for (int c = 0; c < table->columnCount; ++c)
+                {
+                    if (c) row += ',';
+                    row += '"';
+                    for (const char* p = cells[c].string ? cells[c].string : ""; *p; ++p)
+                    { if (*p == '"') row += '"'; row += *p; }
+                    row += '"';
+                }
+                row += '\n';
+            }
+            if (matches != 1) throw std::runtime_error("Expected exactly one Rhino definition");
+            utils::io::write_file("zonetool/paris_rhino/mp/paris_rhino_definition.csv", row);
+        }
 		if (args.size() > 1)
 		{
 			bool do_exit = false;
