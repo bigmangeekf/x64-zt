@@ -7,3 +7,5 @@ Use `-rhino-extract -buildzone paris_rhino` with a locally prepared `zone_source
 Validation: Windows VS2022 Release build succeeded locally. A roughly 4.7 MB pack has linked with one model, 123 animations, one animation class, one behavior tree, 17 dependency scripts, 11 images and required rendering/physics dependencies. Runtime loading and gameplay remain experimental and are not accepted.
 
 The command is intentionally specialized. Upstream contributions should separate generic serializers/shader fixes from this experiment after runtime validation.
+
+Runtime validation found that linking a live donor physics asset copied Havok data after its in-memory transformation. The extraction hook now captures `ragdoll_alien_queen` before registration; the resulting pack passed physics loading. Further validation identified missing functions in Spaceland shared GSC namespaces. These are being isolated in a Rhino support namespace by the local script preparation tools, preserving destination scripts. No spawn or gameplay acceptance yet.
