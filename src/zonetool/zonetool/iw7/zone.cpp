@@ -1,5 +1,6 @@
 #include <std_include.hpp>
 #include "zonetool.hpp"
+#include "zonetool_rhino.hpp"
 #include "zone.hpp"
 #include "zonetool/utils/utils.hpp"
 
@@ -592,6 +593,8 @@ namespace zonetool::iw7
 		try
 		{
 			// declare asset interfaces
+			ADD_ASSET(ASSET_TYPE_ANIMCLASS, rhino_anim_class);
+			ADD_ASSET(ASSET_TYPE_BEHAVIOR_TREE, rhino_behavior_tree);
 			ADD_ASSET(ASSET_TYPE_DDL, ddl);
 			ADD_ASSET(ASSET_TYPE_FX, fx_effect_def);
 			ADD_ASSET(ASSET_TYPE_PARTICLE_SIM_ANIMATION, fx_particle_sim_animation);
@@ -655,6 +658,7 @@ namespace zonetool::iw7
 			ADD_ASSET(ASSET_TYPE_GLASSWORLD, glass_world);
 			ADD_ASSET(ASSET_TYPE_MAP_ENTS, map_ents);
 			ADD_ASSET(ASSET_TYPE_NAVMESH, nav_mesh);
+            if (name_.starts_with("paris_rhino") && !get_asset_pointer(type, name)) throw std::runtime_error("Unsupported dependency in Rhino-only pack");
 		}
 		catch (std::exception& ex)
 		{
@@ -676,7 +680,20 @@ namespace zonetool::iw7
 
 	void zone_interface::build(zone_buffer* buf)
 	{
-		buf->init_streams(MAX_XFILE_COUNT);
+		        if (name_.starts_with("paris_rhino"))
+        {
+            const std::unordered_set<int> forbidden{ASSET_TYPE_CLIPMAP, ASSET_TYPE_COMWORLD, ASSET_TYPE_GFXWORLD,
+                ASSET_TYPE_GFXWORLD_TRANSIENT_ZONE, ASSET_TYPE_FXWORLD, ASSET_TYPE_GLASSWORLD,
+                ASSET_TYPE_MAP_ENTS, ASSET_TYPE_ADDON_MAP_ENTS, ASSET_TYPE_PATHDATA, ASSET_TYPE_NAVMESH};
+            std::string inventory;
+            for (auto& asset : m_assets)
+            {
+                if (forbidden.contains(asset->type())) throw std::runtime_error("Map/world asset forbidden in Rhino-only pack");
+                inventory += std::string(type_to_string(static_cast<XAssetType>(asset->type()))) + "," + asset->name() + "\n";
+            }
+            utils::io::write_file(name_ + ".assets.csv", inventory);
+        }
+buf->init_streams(MAX_XFILE_COUNT);
 
 		[[maybe_unused]] const auto start_time = GetTickCount64();
 
