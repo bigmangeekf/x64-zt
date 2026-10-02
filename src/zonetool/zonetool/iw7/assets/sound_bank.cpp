@@ -3524,6 +3524,12 @@ namespace zonetool::iw7
 		if (!this->asset_)
 		{
 			this->asset_ = db_find_x_asset_header_safe(XAssetType(this->type()), this->name_.data()).soundBank;
+			// A missing bank can resolve to an engine default with null metadata.
+			// Serializing it produces a fastfile that crashes the game when loaded.
+			if (!this->asset_ || DB_IsXAssetDefault(XAssetType(this->type()), this->name_.data()))
+			{
+				throw std::runtime_error("Sound bank not found in source files or loaded zones: " + this->name_);
+			}
 		}
 	}
 
