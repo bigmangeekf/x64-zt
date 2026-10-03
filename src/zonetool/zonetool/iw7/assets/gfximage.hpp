@@ -34,6 +34,6 @@ namespace zonetool::iw7
 		std::int32_t type() override;
 		void write(zone_base* zone, zone_buffer* buffer) override;
 
-		static void dump(GfxImage* asset);
+		static void dump(GfxImage* asset, const std::string& source_fastfile = {});
 	};
 }

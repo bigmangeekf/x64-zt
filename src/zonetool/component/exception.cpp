@@ -4,6 +4,7 @@
 #include "game/mode.hpp"
 
 #include <utils/hook.hpp>
+#include <utils/flags.hpp>
 #include <utils/io.hpp>
 #include <utils/string.hpp>
 #include <utils/thread.hpp>
@@ -28,12 +29,23 @@ namespace exception
 			while (ShowCursor(TRUE) < 0);
 		}
 
+		bool terminate_headless(const std::string& error_str)
+		{
+			if (!utils::flags::has_flag("headless")) return false;
+			utils::io::write_file("zonetool-headless-error.txt", error_str);
+			std::fprintf(stderr, "%s", error_str.c_str());
+			std::fflush(nullptr);
+			TerminateProcess(GetCurrentProcess(), exception_data.code);
+			return true;
+		}
+
 		void display_error_dialog()
 		{
 			std::string error_str = utils::string::va("Fatal error (0x%08X) at 0x%p (0x%p).\n"
 				"A minidump has been written.\n\n",
 				exception_data.code, exception_data.address,
 				reinterpret_cast<uint64_t>(exception_data.address));
+			if (terminate_headless(error_str)) return;
 
 			utils::thread::suspend_other_threads();
 			show_mouse_cursor();
@@ -127,6 +139,7 @@ namespace exception
 				e->what(),
 				exception_data.code, exception_data.address,
 				reinterpret_cast<uint64_t>(exception_data.address));
+			if (terminate_headless(error_str)) return;
 
 			utils::thread::suspend_other_threads();
 			show_mouse_cursor();

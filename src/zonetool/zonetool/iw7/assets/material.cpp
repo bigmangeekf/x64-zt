@@ -185,7 +185,14 @@ namespace zonetool::iw7
 			mat[i].nameHash = matdata[i]["typeHash"].get<unsigned int>();
 
 			std::string img = matdata[i]["image"].get<std::string>();
-			mat[i].image = db_find_x_asset_header(ASSET_TYPE_IMAGE, img.data(), 1).image;
+			if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+			{
+				// Preserve the requested JSON name. Resolve its actual source/reference
+				// through the zone dependency loader instead of creating a DB default.
+				mat[i].image = mem->allocate<GfxImage>();
+				mat[i].image->name = mem->duplicate_string(img);
+			}
+			else mat[i].image = db_find_x_asset_header(ASSET_TYPE_IMAGE, img.data(), 1).image;
 		}
 
 		return mat;
@@ -237,7 +244,12 @@ namespace zonetool::iw7
 		std::string techset = matdata["techniqueSet->name"];
 		if (!techset.empty())
 		{
-			mat->techniqueSet = db_find_x_asset_header(ASSET_TYPE_TECHNIQUE_SET, techset.data(), 1).techniqueSet;
+			if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+			{
+				mat->techniqueSet = mem->allocate<MaterialTechniqueSet>();
+				mat->techniqueSet->name = mem->duplicate_string(techset);
+			}
+			else mat->techniqueSet = db_find_x_asset_header(ASSET_TYPE_TECHNIQUE_SET, techset.data(), 1).techniqueSet;
 		}
 
 		json textureTable = matdata["textureTable"];
@@ -350,6 +362,8 @@ namespace zonetool::iw7
 
 			if (DB_IsXAssetDefault(XAssetType(this->type()), this->name_.data()))
 			{
+				if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+					throw std::runtime_error("Required IW7 enemy material donor asset missing: " + name);
 				ZONETOOL_WARNING("Missing material \"%s\", using default...", this->name_.data());
 			}
 

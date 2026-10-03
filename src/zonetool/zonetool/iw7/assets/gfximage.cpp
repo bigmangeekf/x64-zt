@@ -275,6 +275,22 @@ namespace zonetool::iw7
 		for (auto i = 0; i < 4; i++)
 		{
 			const auto result = get_streamed_image_pixels_path(name, i);
+			if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+			{
+				const auto cumulative = asset->streams[i].levelCountAndSize.pixelSize;
+				const auto previous = i ? asset->streams[i - 1].levelCountAndSize.pixelSize : 0;
+				if (!cumulative)
+				{
+					for (int tail = i + 1; tail < 4; ++tail)
+						if (asset->streams[tail].levelCountAndSize.pixelSize)
+							throw std::runtime_error("IW7 enemy portable image has a hole in its stream descriptors: " + name);
+					if (result.has_value()) throw std::runtime_error("IW7 enemy portable image has pixels for an unused stream: " + name);
+					continue;
+				}
+				if (cumulative < previous || (cumulative > previous &&
+					(!result.has_value() || std::filesystem::file_size(result.value()) != cumulative - previous)))
+					throw std::runtime_error("IW7 enemy portable image stream is missing or has the wrong size: " + name);
+			}
 			if (!result.has_value())
 			{
 				continue;
@@ -285,6 +301,10 @@ namespace zonetool::iw7
 		}
 
 		read.close();
+		// Serialized GPU and resident pointers belong to the extraction process.
+		// The portable PAK supplies every declared stream; retain no process pointers.
+		memset(&asset->texture, 0, sizeof(asset->texture));
+		asset->pixelData = nullptr;
 
 		return asset;
 	}
@@ -319,6 +339,12 @@ namespace zonetool::iw7
 
 		read.close();
 
+		if (filesystem::get_fastfile().starts_with("paris_enemy_") &&
+			asset->imageFormat == DXGI_FORMAT_R8G8B8A8_UNORM && asset->category == IMG_CATEGORY_AUTO_GENERATED &&
+			asset->width == 1 && asset->height == 1 && asset->dataLen1 == 4 && asset->pixelData &&
+			asset->pixelData[0] == 255 && asset->pixelData[1] == 0 && asset->pixelData[2] == 0 && asset->pixelData[3] == 255)
+			throw std::runtime_error("IW7 enemy image source is the generated missing-image placeholder: " + name);
+
 		memset(&asset->texture, 0, sizeof(asset->texture));
 
 		return asset;
@@ -335,6 +361,11 @@ namespace zonetool::iw7
 			return;
 		}
 
+		if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+		{
+			this->asset_ = this->parse_streamed_image(name, mem);
+			if (this->asset_) return;
+		}
 		this->asset_ = this->parse(name, mem);
 		if (this->asset_)
 		{
@@ -350,6 +381,8 @@ namespace zonetool::iw7
 		this->asset_ = parse_custom(name.data(), mem);
 		if (!this->asset_)
 		{
+			if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+				throw std::runtime_error("Required IW7 enemy image source missing: " + name);
 			ZONETOOL_WARNING("Image \"%s\" not found, it will probably look messed up ingame!", name.data());
 
 			static unsigned char default_pixel_data[4] = { 255, 0, 0, 255 };
@@ -510,7 +543,7 @@ namespace zonetool::iw7
 		return out_buffer;
 	}
 
-	void dump_streamed_image(GfxImage* image, bool is_self = false, bool dump_dds = false)
+	void dump_streamed_image(GfxImage* image, bool is_self = false, bool dump_dds = false, const std::string& source_fastfile = {})
 	{
 		const auto index = (*g_streamZoneMem)->streamed_image_index;
 		for (auto i = 0u; i < 4; i++)
@@ -520,7 +553,7 @@ namespace zonetool::iw7
 			std::string filename = utils::string::va("imagefile%d.pak", stream_file->fileIndex);
 			if (is_self)
 			{
-				filename = utils::string::va("%s.pak", filesystem::get_fastfile().data());
+				filename = (source_fastfile.empty() ? filesystem::get_fastfile() : source_fastfile) + ".pak";
 			}
 			const auto folder = filesystem::get_zone_path(filename);
 
@@ -690,7 +723,7 @@ namespace zonetool::iw7
 		}
 	}
 
-	void gfx_image::dump(GfxImage* asset)
+	void gfx_image::dump(GfxImage* asset, const std::string& source_fastfile)
 	{
 		if (utils::flags::has_flag("dds"))
 		{
@@ -701,7 +734,7 @@ namespace zonetool::iw7
 		{
 			if ((*g_streamZoneMem)->streamed_images[(*g_streamZoneMem)->streamed_image_index].fileIndex == 431)
 			{
-				dump_streamed_image(asset, true);
+				dump_streamed_image(asset, true, false, source_fastfile);
 				return;
 			}
 

@@ -12,6 +12,8 @@
 #include "game/shared.hpp"
 
 #include <utils/memory.hpp>
+#include <utils/flags.hpp>
+#include <utils/io.hpp>
 
 namespace nlohmann
 {
@@ -46,10 +48,19 @@ namespace nlohmann
 	printf("[ ERROR ][ %s ]: " __FMT__ "\n", zonetool::strip_template(__FUNCTION__), __VA_ARGS__)
 
 #define ZONETOOL_FATAL(__FMT__, ...) \
-	printf("[ FATAL ][ %s ]: " __FMT__ "\n", zonetool::strip_template(__FUNCTION__), __VA_ARGS__); \
-	zonetool::taskbar::set_error(); \
-	MessageBoxA(nullptr, &utils::string::va("Oops! An unexpected error occured. Error was: \n" __FMT__ "\n\nZoneTool must be restarted to resolve the error. Last error code reported by windows: 0x%08X (%u)", __VA_ARGS__, GetLastError(), GetLastError())[0], nullptr, MB_ICONERROR); \
-	std::quick_exit(EXIT_FAILURE)
+	do { \
+		zonetool::taskbar::set_error(); \
+		const auto error_str = utils::string::va("Oops! An unexpected error occured. Error was: \n" __FMT__ "\n\nZoneTool must be restarted to resolve the error. Last error code reported by windows: 0x%08X (%u)", __VA_ARGS__, GetLastError(), GetLastError()); \
+		fprintf(stdout, "[ FATAL ][ %s ]: %s\n", zonetool::strip_template(__FUNCTION__), error_str); \
+		if (utils::flags::has_flag("headless")) { \
+			utils::io::write_file("zonetool-headless-error.txt", error_str); \
+			fprintf(stderr, "%s", error_str); \
+			fflush(nullptr); \
+			std::quick_exit(EXIT_FAILURE); \
+		} \
+		MessageBoxA(nullptr, error_str, nullptr, MB_ICONERROR); \
+		std::quick_exit(EXIT_FAILURE); \
+	} while (false)
 
 #define ZONETOOL_WARNING(__FMT__, ...) \
 	printf("[ WARNING ][ %s ]: " __FMT__ "\n", zonetool::strip_template(__FUNCTION__), __VA_ARGS__)
