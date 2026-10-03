@@ -1,5 +1,6 @@
 #include <std_include.hpp>
 #include "zonetool.hpp"
+#include "zonetool_enemy.hpp"
 #include "zone.hpp"
 #include "zonetool/utils/utils.hpp"
 
@@ -585,6 +586,7 @@ namespace zonetool::iw7
 		{ \
 			auto asset = std::make_shared < ___ >(); \
 			asset->init(name, this->m_zonemem.get()); \
+			dump_enemy_pack_asset(static_cast<XAssetType>(type), asset->pointer()); \
 			asset->load_depending(this); \
 			m_assets.push_back(asset); \
 		}
@@ -592,6 +594,9 @@ namespace zonetool::iw7
 		try
 		{
 			// declare asset interfaces
+			ADD_ASSET(ASSET_TYPE_ANIMCLASS, iw7_anim_class);
+			ADD_ASSET(ASSET_TYPE_BEHAVIOR_TREE, iw7_behavior_tree);
+			ADD_ASSET(ASSET_TYPE_XANIM_PROCEDURALBONES, iw7_procedural_bones);
 			ADD_ASSET(ASSET_TYPE_DDL, ddl);
 			ADD_ASSET(ASSET_TYPE_FX, fx_effect_def);
 			ADD_ASSET(ASSET_TYPE_PARTICLE_SIM_ANIMATION, fx_particle_sim_animation);
@@ -655,6 +660,8 @@ namespace zonetool::iw7
 			ADD_ASSET(ASSET_TYPE_GLASSWORLD, glass_world);
 			ADD_ASSET(ASSET_TYPE_MAP_ENTS, map_ents);
 			ADD_ASSET(ASSET_TYPE_NAVMESH, nav_mesh);
+			if (name_.starts_with("paris_enemy_") && !get_asset_pointer(type, name))
+				throw std::runtime_error("Unsupported dependency in IW7 enemy pack");
 		}
 		catch (std::exception& ex)
 		{
@@ -676,6 +683,57 @@ namespace zonetool::iw7
 
 	void zone_interface::build(zone_buffer* buf)
 	{
+		if (name_.starts_with("paris_enemy_"))
+		{
+			const auto suffix = name_.substr(std::string("paris_enemy_").size());
+			if (suffix.empty() || !std::all_of(suffix.begin(), suffix.end(), [](unsigned char c)
+				{ return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }))
+				throw std::runtime_error("Unsafe IW7 enemy pack name");
+
+			const bool script_pack = suffix.ends_with("_scripts");
+			const std::unordered_set<int> forbidden_world{ASSET_TYPE_CLIPMAP, ASSET_TYPE_COMWORLD,
+				ASSET_TYPE_GFXWORLD, ASSET_TYPE_GFXWORLD_TRANSIENT_ZONE, ASSET_TYPE_FXWORLD,
+				ASSET_TYPE_GLASSWORLD, ASSET_TYPE_MAP_ENTS, ASSET_TYPE_ADDON_MAP_ENTS,
+				ASSET_TYPE_PATHDATA, ASSET_TYPE_NAVMESH};
+			std::string inventory;
+			for (auto& asset : m_assets)
+			{
+				const auto type = asset->type();
+				const auto asset_name = asset->name();
+				if (forbidden_world.contains(type)) throw std::runtime_error("Map/world asset forbidden in IW7 enemy pack");
+				if (script_pack)
+				{
+					if (type != ASSET_TYPE_SCRIPTFILE && type != ASSET_TYPE_RAWFILE)
+						throw std::runtime_error("Non-script dependency entered IW7 enemy script pack");
+					if (type == ASSET_TYPE_RAWFILE && asset_name != name_)
+						throw std::runtime_error("Unexpected rawfile entered IW7 enemy script pack");
+				}
+				else
+				{
+					if (type == ASSET_TYPE_SCRIPTFILE)
+						throw std::runtime_error("Scriptfile entered IW7 enemy client pack");
+					if (type == ASSET_TYPE_RAWFILE)
+					{
+						if (asset_name != name_)
+						{
+							auto rawfile_name = asset_name;
+							if (rawfile_name.starts_with(",")) rawfile_name.erase(0, 1);
+							std::replace(rawfile_name.begin(), rawfile_name.end(), '\\', '/');
+							const std::filesystem::path rawfile_path(rawfile_name);
+							if (!rawfile_name.starts_with("animtrees/") || !rawfile_name.ends_with(".atr") ||
+								rawfile_path.is_absolute() || std::any_of(rawfile_path.begin(), rawfile_path.end(),
+									[](const auto& part) { return part == "." || part == ".."; }))
+							throw std::runtime_error("Unexpected rawfile entered IW7 enemy client pack: " + asset_name);
+						}
+					}
+					if (type == ASSET_TYPE_STRINGTABLE && asset_name != "mp/" + name_ + "_definition.csv")
+						throw std::runtime_error("Unexpected stringtable entered IW7 enemy client pack");
+				}
+				inventory += std::string(type_to_string(static_cast<XAssetType>(type))) + "," + asset_name + "\n";
+			}
+			utils::io::write_file(name_ + ".assets.csv", inventory);
+		}
+
 		buf->init_streams(MAX_XFILE_COUNT);
 
 		[[maybe_unused]] const auto start_time = GetTickCount64();

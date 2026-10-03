@@ -35,6 +35,8 @@ namespace zonetool::iw7
 		read.close();
 
 		asset->havokData = havok::binary::parse_havok_data(path, &asset->havokDataSize, mem);
+		if (filesystem::get_fastfile().starts_with("paris_enemy_") && (!asset->havokData || !asset->havokDataSize))
+			throw std::runtime_error("Enemy pack PhysicsAsset has no valid portable Havok data: " + name);
 
 		return asset;
 	}
@@ -53,6 +55,8 @@ namespace zonetool::iw7
 		this->asset_ = this->parse(name, mem);
 		if (!this->asset_)
 		{
+			if (filesystem::get_fastfile().starts_with("paris_enemy_"))
+				throw std::runtime_error("Enemy pack is missing a portable PhysicsAsset source: " + name);
 			this->asset_ = db_find_x_asset_header_safe(XAssetType(this->type()), this->name().data()).physicsAsset;
 		}
 	}

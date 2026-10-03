@@ -425,6 +425,26 @@ namespace zonetool::iw7
 	void techset::load_depending(zone_base* zone)
 	{
 		auto data = this->asset_;
+		const auto preserve_enemy_shader_source = [&](auto* shader, const char* shader_type)
+		{
+			if (!filesystem::get_fastfile().starts_with("paris_enemy_")) return;
+			if (!shader || !shader->name) throw std::runtime_error("IW7 enemy techset has a shader without a name");
+			const std::string shader_name = shader->name;
+			const std::filesystem::path relative = std::filesystem::path("techsets") / shader_type / (shader_name + ".cso");
+			if (relative.is_absolute() || std::any_of(relative.begin(), relative.end(), [](const auto& part) { return part == ".."; }))
+				throw std::runtime_error("Unsafe shader source path in IW7 enemy pack");
+			const auto source = std::filesystem::path(filesystem::get_dump_path()) / relative;
+			if (!std::filesystem::exists(source))
+				throw std::runtime_error("Fresh shader source missing from IW7 enemy extraction: " + std::string(shader_type) + "/" + shader_name);
+			const auto bytes = utils::io::read_file(source.string());
+			const bool empty_null = std::string(shader_type) == "ps" && shader_name == "null.hlsl" && bytes.empty();
+			if (!empty_null && (bytes.size() < 32 || bytes.compare(0, 4, "DXBC") != 0))
+				throw std::runtime_error("IW7 enemy shader source is empty or invalid DXBC: " + shader_name);
+			const auto destination_root = std::filesystem::path("zonetool") / filesystem::get_fastfile();
+			const auto destination = destination_root / relative;
+			std::filesystem::create_directories(destination.parent_path());
+			std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing);
+		};
 
 		for (auto technique = 0u; technique < data->techniqueCount; technique++)
 		{
@@ -435,6 +455,7 @@ namespace zonetool::iw7
 				if (techniquePass.vertexShader)
 				{
 					zone->add_asset_of_type(ASSET_TYPE_VERTEXSHADER, techniquePass.vertexShader->name);
+					preserve_enemy_shader_source(techniquePass.vertexShader, "vs");
 				}
 
 				/*if (techniquePass.vertexDecl)
@@ -445,16 +466,19 @@ namespace zonetool::iw7
 				if (techniquePass.hullShader)
 				{
 					zone->add_asset_of_type(ASSET_TYPE_HULLSHADER, techniquePass.hullShader->name);
+					preserve_enemy_shader_source(techniquePass.hullShader, "hs");
 				}
 
 				if (techniquePass.domainShader)
 				{
 					zone->add_asset_of_type(ASSET_TYPE_DOMAINSHADER, techniquePass.domainShader->name);
+					preserve_enemy_shader_source(techniquePass.domainShader, "ds");
 				}
 
 				if (techniquePass.pixelShader)
 				{
 					zone->add_asset_of_type(ASSET_TYPE_PIXELSHADER, techniquePass.pixelShader->name);
+					preserve_enemy_shader_source(techniquePass.pixelShader, "ps");
 				}
 			}
 		}

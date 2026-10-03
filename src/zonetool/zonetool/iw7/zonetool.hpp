@@ -81,6 +81,7 @@
 namespace zonetool::iw7
 {
 	extern std::unordered_set<std::pair<std::uint32_t, std::string>, pair_hash<std::uint32_t, std::string>> ignore_assets;
+	void dump_enemy_pack_asset(XAssetType type, void* asset);
 
 	XAssetHeader db_find_x_asset_header(XAssetType type, const char* name, int create_default);
 	XAssetHeader db_find_x_asset_header_safe(XAssetType type, const std::string& name);
