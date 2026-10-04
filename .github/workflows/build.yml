@@ -45,6 +45,19 @@ jobs:
       - name: Build ${{ matrix.configuration }} zonetool
         run: msbuild /m /v:minimal /p:Configuration=${{ matrix.configuration }} /p:Platform=x64 build/x64-zt.sln
 
+      - name: Test file ownership and soundbank subset rules
+        if: matrix.configuration == 'Release'
+        shell: pwsh
+        run: |
+          msbuild tests/filesystem_ownership_tests.vcxproj /m:1 /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./build/tests/filesystem_ownership_tests.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          msbuild tests/sound_bank_subset_tests.vcxproj /m:1 /nr:false /v:minimal /p:Configuration=Release /p:Platform=x64
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./build/tests/sound_bank_subset_tests.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
       - name: Upload ${{ matrix.configuration }} zonetool
         uses: actions/upload-artifact@v4
         with:

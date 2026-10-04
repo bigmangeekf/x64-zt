@@ -33,6 +33,10 @@ the root selectors requires an exact `allowedDependencies` entry. An alias
 outside the donor requires an exact `externalAliases` entry; it remains an
 external reference and must exist in the recipient's loaded banks. Missing
 external ducks require explicitly reviewed numeric `externalDuckIds`.
+`version` must be the integer `1`; fractional, exponent, string and Boolean
+representations are rejected. Duck IDs must be distinct JSON integers between
+0 and 4294967295 inclusive, without rounding or wraparound. Schema validation
+runs before resolving the donor bank.
 
 The clone keeps the donor's zone, languages, asset IDs and sample addressing.
 It does not export or repack audio samples: the legal stock SAB files must still
@@ -41,10 +45,30 @@ ducks are copied. The alias hash index is rebuilt and every lookup checked.
 Donor ambient, zone, mix, reverb, send-effect and music tables are removed. The
 database donor is never modified.
 
-Each build writes a local `soundbank-subsets/<unique-bank>.json` report with the
+Each parse writes a local `soundbank-subsets/<unique-bank>.json` report with the
 selected names, sample asset IDs, external references and index verification.
+`sourceSHA256` fingerprints the exact subset source bytes; `stage: subset-parse`
+identifies the evidence boundary. Publication uses an exclusively created sibling,
+flushes and verifies its exact bytes, then atomically replaces the previous report.
+Repeated builds are supported; file, directory, write, readback and publication
+errors fail the build. A prior report may remain after a failed build, so consumers
+must require a successful current process, matching source fingerprint and separate
+package verification. The report alone is not evidence of a completed package.
 Keep generated reports and retail dumps out of source control. Inspect the
 closure for unwanted dialogue and validate sample resolution and playback in
 the recipient: a successful package build proves neither audibility nor
 recipient audio compatibility. Unknown fields, ambiguous hashes, incomplete
 donors and unreviewed dependencies fail the build.
+
+Asset-free Windows regression tests exercise strict schema boundaries, collision
+chains against independent linear lookups, and successful/rejected report
+publication, including a locked destination and repeat builds. With Visual Studio
+2022 C++ tools and the repository's JSON submodule available:
+
+```powershell
+msbuild tests/sound_bank_subset_tests.vcxproj /m:1 /nr:false /p:Configuration=Release /p:Platform=x64
+./build/tests/sound_bank_subset_tests.exe
+```
+
+These tests do not launch the game or load retail data. Donor dependency closure,
+serialization and playback still require separate source/recipient validation.

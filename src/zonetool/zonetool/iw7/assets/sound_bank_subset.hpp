@@ -1,5 +1,9 @@
 #pragma once
 
+#include "sound_bank_subset_rules.hpp"
+#include "sound_bank_subset_report.hpp"
+#include <utils/cryptography.hpp>
+
 // Cloning preserves retail SAB addresses. The donor remains owned by the DB.
 // This path never dumps audio, creates a SAB, or copies a donor map's mixers.
 namespace zonetool::iw7::sound_bank_subset
@@ -12,35 +16,25 @@ namespace zonetool::iw7::sound_bank_subset
 			throw std::runtime_error("Invalid soundbank subset name");
 		if (filesystem::file("soundbank\\" + name + ".json").exists())
 			throw std::runtime_error("Soundbank has both a subset and an ordinary source: " + name);
-		file.open("rb");
-		const auto data = json::parse(file.read_bytes(file.size()));
-		file.close();
-		const std::unordered_set<std::string> keys{"version", "donor", "prefixes", "aliases",
-			"requiredAliases", "allowedDependencies", "externalAliases", "externalDuckIds"};
-		if (!data.is_object()) throw std::runtime_error("Soundbank subset must be an object");
-		for (const auto& [key, value] : data.items())
-			if (!keys.contains(key)) throw std::runtime_error("Unknown soundbank subset field: " + key);
-		if (data.at("version").get<int>() != 1) throw std::runtime_error("Unsupported soundbank subset version");
-		const auto donor_name = data.at("donor").get<std::string>();
-		if (donor_name.empty() || donor_name == name) throw std::runtime_error("Subset needs a distinct donor bank");
+		if (file.open("rb") != 0) throw std::runtime_error("Could not open soundbank subset source");
+		std::vector<uint8_t> source_bytes(file.size());
+		if (source_bytes.empty() || file.read(source_bytes.data(), 1, source_bytes.size()) != source_bytes.size() ||
+			fgetc(file.get_fp()) != EOF || ferror(file.get_fp()))
+			throw std::runtime_error("Could not read exact soundbank subset source bytes");
+		if (file.close() != 0) throw std::runtime_error("Could not close soundbank subset source");
+		const auto config = read_configuration(json::parse(source_bytes), name);
+		const auto& donor_name = config.donor;
 		auto* donor = db_find_x_asset_header_safe(ASSET_TYPE_SOUND_BANK, donor_name.c_str()).soundBank;
 		if (!donor || DB_IsXAssetDefault(ASSET_TYPE_SOUND_BANK, donor_name.c_str()) ||
 			!donor->alias || !donor->aliasCount || !donor->zone || !donor->gameLanguage || !donor->soundLanguage ||
 			(donor->duckCount && !donor->ducks))
 			throw std::runtime_error("Soundbank subset donor is missing or incomplete: " + donor_name);
 
-		const auto strings = [&](const char* key)
-		{
-			auto result = data.value(key, std::vector<std::string>{});
-			std::unordered_set<std::string> unique;
-			for (const auto& value : result)
-				if (value.empty() || !unique.insert(value).second)
-					throw std::runtime_error("Empty or repeated subset selector in " + std::string(key));
-			return result;
-		};
-		const auto prefixes = strings("prefixes"), roots = strings("aliases"), required = strings("requiredAliases");
-		const auto allowed = strings("allowedDependencies"), external = strings("externalAliases");
-		if (prefixes.empty() && roots.empty()) throw std::runtime_error("Soundbank subset has no roots");
+		const auto& prefixes = config.prefixes;
+		const auto& roots = config.roots;
+		const auto& required = config.required;
+		const auto& allowed = config.allowed;
+		const auto& external = config.external;
 		const std::unordered_set<std::string> root_names(roots.begin(), roots.end()), allowed_names(allowed.begin(), allowed.end());
 		std::unordered_map<std::string, unsigned int> by_name;
 		std::unordered_map<SndStringHash, unsigned int> by_id;
@@ -69,7 +63,7 @@ namespace zonetool::iw7::sound_bank_subset
 		for (const auto& alias : external)
 			if (by_name.contains(alias) || !external_by_id.emplace(snd_hash_name(alias.c_str()), alias).second)
 				throw std::runtime_error("External alias is local or has an ambiguous hash: " + alias);
-		const auto external_ducks = data.value("externalDuckIds", std::vector<SndStringHash>{});
+		const auto& external_ducks = config.external_ducks;
 		const std::unordered_set<SndStringHash> permitted_ducks(external_ducks.begin(), external_ducks.end());
 		std::unordered_map<SndStringHash, const SndDuck*> by_duck;
 		for (unsigned int i = 0; i < donor->duckCount; ++i)
@@ -135,35 +129,11 @@ namespace zonetool::iw7::sound_bank_subset
 			bank->alias[i].head = mem->allocate<SndAlias>(bank->alias[i].count);
 			memcpy(bank->alias[i].head, donor->alias[selected[i]].head, sizeof(SndAlias) * bank->alias[i].count);
 		}
+		std::vector<SndStringHash> alias_ids;
+		for (unsigned int i = 0; i < bank->aliasCount; ++i) alias_ids.push_back(bank->alias[i].id);
+		const auto alias_index = build_alias_index<SndIndexEntry>(alias_ids);
 		bank->aliasIndex = mem->allocate<SndIndexEntry>(bank->aliasCount);
-		memset(bank->aliasIndex, 0xFF, sizeof(SndIndexEntry) * bank->aliasCount);
-		std::vector<bool> indexed(bank->aliasCount, false);
-		// Reserve every home bucket before adding overflow nodes, so an overflow
-		// cannot consume a bucket needed by a later alias.
-		for (unsigned short i = 0; i < bank->aliasCount; ++i)
-		{
-			const auto bucket = bank->alias[i].id % bank->aliasCount;
-			if (bank->aliasIndex[bucket].value == empty) { bank->aliasIndex[bucket].value = i; indexed[i] = true; }
-		}
-		for (unsigned short i = 0; i < bank->aliasCount; ++i)
-		{
-			if (indexed[i]) continue;
-			auto tail = static_cast<unsigned short>(bank->alias[i].id % bank->aliasCount);
-			while (bank->aliasIndex[tail].next != empty) tail = bank->aliasIndex[tail].next;
-			unsigned short free_slot = empty;
-			for (unsigned int j = 0; j < bank->aliasCount; ++j)
-				if (bank->aliasIndex[j].value == empty) { free_slot = static_cast<unsigned short>(j); break; }
-			if (free_slot == empty) throw std::runtime_error("Soundbank subset index exhausted");
-			bank->aliasIndex[tail].next = free_slot;
-			bank->aliasIndex[free_slot].value = i;
-		}
-		for (unsigned short i = 0; i < bank->aliasCount; ++i)
-		{
-			auto slot = static_cast<unsigned short>(bank->alias[i].id % bank->aliasCount);
-			unsigned int steps = 0;
-			while (slot != empty && bank->aliasIndex[slot].value != i && steps++ < bank->aliasCount) slot = bank->aliasIndex[slot].next;
-			if (slot == empty || steps >= bank->aliasCount) throw std::runtime_error("Soundbank subset index verification failed");
-		}
+		memcpy(bank->aliasIndex, alias_index.data(), sizeof(SndIndexEntry) * bank->aliasCount);
 		std::vector<SndDuck> ducks;
 		for (unsigned int i = 0; i < donor->duckCount; ++i)
 			if (required_ducks.contains(donor->ducks[i].id)) ducks.push_back(donor->ducks[i]);
@@ -174,7 +144,9 @@ namespace zonetool::iw7::sound_bank_subset
 		bank->sendEffectCount = 0; bank->sendEffects = nullptr;
 		bank->musicSetCount = 0; bank->musicSets = nullptr;
 
-		ordered_json report{{"version", 1}, {"bank", name}, {"donor", donor_name}, {"donorAliasCount", donor->aliasCount},
+		ordered_json report{{"version", 1}, {"stage", "subset-parse"},
+			{"sourceSHA256", utils::cryptography::sha256::compute(source_bytes.data(), source_bytes.size(), true)},
+			{"bank", name}, {"donor", donor_name}, {"donorAliasCount", donor->aliasCount},
 			{"aliasCount", bank->aliasCount}, {"duckCount", bank->duckCount}, {"zone", bank->zone},
 			{"gameLanguage", bank->gameLanguage}, {"soundLanguage", bank->soundLanguage}, {"aliases", ordered_json::array()},
 			{"externalAliases", ordered_json::array()}, {"externalDuckIds", ordered_json::array()}, {"indexVerified", true}};
@@ -189,8 +161,7 @@ namespace zonetool::iw7::sound_bank_subset
 		}
 		for (const auto id : used_external) report["externalAliases"].push_back(external_by_id.at(id));
 		for (const auto id : required_ducks) if (!by_duck.contains(id)) report["externalDuckIds"].push_back(id);
-		std::filesystem::create_directories("soundbank-subsets");
-		utils::io::write_file("soundbank-subsets/" + name + ".json", report.dump(2));
+		publish_report("soundbank-subsets", name, report.dump(2));
 		ZONETOOL_INFO("Soundbank subset %s: %u/%u alias lists; rebuilt index verified", name.c_str(), bank->aliasCount, donor->aliasCount);
 		return bank;
 	}

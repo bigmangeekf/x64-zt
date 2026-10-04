@@ -3,6 +3,7 @@
 
 #include "converter/converter.hpp"
 #include "assets/physics_asset.hpp"
+#include "assets/sound_bank_subset_rules.hpp"
 #include "common/havok.hpp"
 
 #include "../utils/gsc.hpp"
@@ -2461,6 +2462,9 @@ namespace zonetool::iw7
 
 	void catalog_soundbank(const std::string& donor_zone, const std::string& bank_name, const std::string& output_name)
 	{
+		// Reject before creating output or loading any requested zone.
+		if (!sound_bank_subset::is_catalog_donor(donor_zone))
+			throw std::runtime_error("Soundbank catalog donor must be cp_zmb, cp_rave, cp_disco, cp_town, or cp_final");
 		if (!is_safe_enemy_reference_name(bank_name)) throw std::runtime_error("Invalid soundbank name");
 		const auto output = prepare_enemy_reference_output(output_name);
 		globals.target_game = game::iw7;
