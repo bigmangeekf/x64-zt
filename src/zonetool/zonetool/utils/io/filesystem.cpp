@@ -2,6 +2,7 @@
 #include "filesystem.hpp"
 
 #include <utils/io.hpp>
+#include <cerrno>
 
 namespace zonetool
 {
@@ -92,6 +93,9 @@ namespace zonetool
 
 		errno_t file::open(std::string mode, bool use_path, bool is_zone)
 		{
+			// Reopening transfers ownership to a new stream; never leak the old one.
+			if (this->close() != 0) return errno ? errno : EIO;
+			if (mode.empty()) return EINVAL;
 			if (use_path)
 			{
 				if (mode[0] == 'r')
@@ -206,11 +210,12 @@ namespace zonetool
 
 		int file::close()
 		{
-			if (this->fp)
-			{
-				return fclose(this->fp);
-			}
-			return -1;
+			// Invalidate ownership before releasing the stream, including on an I/O
+			// error. exists(), explicit close(), assignment and destruction may all
+			// close the same object, but must never fclose the same stream twice.
+			FILE* const stream = this->fp;
+			this->fp = nullptr;
+			return stream ? fclose(stream) : 0;
 		}
 
 		bool file::create_path()
