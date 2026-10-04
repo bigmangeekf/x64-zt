@@ -5,6 +5,7 @@
 
 #include "utils/io.hpp"
 #include "utils/bit_buffer.hpp"
+#include "sound_bank_subset.hpp"
 
 namespace zonetool::iw7
 {
@@ -3520,7 +3521,8 @@ namespace zonetool::iw7
 			return;
 		}
 
-		this->asset_ = parse(name, mem);
+		this->asset_ = sound_bank_subset::parse(name, mem);
+		if (!this->asset_) this->asset_ = parse(name, mem);
 		if (!this->asset_)
 		{
 			this->asset_ = db_find_x_asset_header_safe(XAssetType(this->type()), this->name_.data()).soundBank;

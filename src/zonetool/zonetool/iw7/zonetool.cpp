@@ -2459,6 +2459,43 @@ namespace zonetool::iw7
 		utils::io::write_file(definition_path, row);
 	}
 
+	void catalog_soundbank(const std::string& donor_zone, const std::string& bank_name, const std::string& output_name)
+	{
+		if (!is_safe_enemy_reference_name(bank_name)) throw std::runtime_error("Invalid soundbank name");
+		const auto output = prepare_enemy_reference_output(output_name);
+		globals.target_game = game::iw7;
+		globals.dump = globals.dump_csv = globals.verify = false;
+		asset_type_filter.clear();
+		load_enemy_source_zones(donor_zone);
+		const auto* bank = db_find_x_asset_header_safe(ASSET_TYPE_SOUND_BANK, bank_name).soundBank;
+		if (!bank || DB_IsXAssetDefault(ASSET_TYPE_SOUND_BANK, bank_name.c_str()) ||
+			!bank->alias || !bank->aliasCount || bank->aliasCount > 65535)
+			throw std::runtime_error("Soundbank catalog donor is missing or invalid");
+		const auto quote = [](const char* value)
+		{
+			std::string text = "\"";
+			for (const char* p = value ? value : ""; *p; ++p) { if (*p == '"') text += '"'; text += *p; }
+			return text + '"';
+		};
+		std::string csv = "alias,id,head,asset_id,secondary,secondary_id,stop,stop_id,duck,load_type,channel\n";
+		for (unsigned int i = 0; i < bank->aliasCount; ++i)
+		{
+			const auto& list = bank->alias[i];
+			if (!list.aliasName || !list.head || list.count <= 0 || list.count > 65535)
+				throw std::runtime_error("Invalid soundbank catalog alias list");
+			for (int h = 0; h < list.count; ++h)
+			{
+				const auto& alias = list.head[h];
+				csv += quote(list.aliasName) + ',' + std::to_string(list.id) + ',' + std::to_string(h) + ',' +
+					std::to_string(alias.assetId) + ',' + quote(alias.secondaryAliasName) + ',' + std::to_string(alias.secondaryId) + ',' +
+					quote(alias.stopAliasName) + ',' + std::to_string(alias.stopAliasID) + ',' + std::to_string(alias.duck) + ',' +
+					std::to_string(alias.flags.type) + ',' + std::to_string(alias.flags.channel) + '\n';
+			}
+		}
+		write_enemy_reference_output(output, csv);
+		ZONETOOL_INFO("Soundbank catalog: %s; alias lists=%u; metadata only; output=%s", bank_name.c_str(), bank->aliasCount, output.string().c_str());
+	}
+
 	void handle_params()
 	{
 		// Execute command line commands
@@ -2469,6 +2506,20 @@ namespace zonetool::iw7
 
 			for (std::size_t i = 0; i < args.size(); i++)
 			{
+				if (args[i] == "-soundbank-catalog")
+				{
+					try
+					{
+						if (i + 3 >= args.size()) throw std::runtime_error("usage: -soundbank-catalog <Zombies-map> <bank> <safe-output-name>");
+						catalog_soundbank(args[i + 1], args[i + 2], args[i + 3]);
+						fflush(nullptr);
+						std::quick_exit(EXIT_SUCCESS);
+					}
+					catch (const std::exception& error) { ZONETOOL_ERROR("Soundbank catalog failed: %s", error.what()); }
+					catch (...) { ZONETOOL_ERROR("Soundbank catalog failed with an unknown error"); }
+					fflush(nullptr);
+					std::quick_exit(EXIT_FAILURE);
+				}
 				if (args[i] == "-enemy-script-catalog")
 				{
 					try

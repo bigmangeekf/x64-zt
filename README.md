@@ -22,6 +22,10 @@ Check out the [Aurora Zonetool Basics](https://docs.auroramod.dev/zonetool-basic
 * `dumpzone <zone>`: Dumps a zone
 * `dumpzone <target game> <zone> <asset filter>`: Dumps a zone converting assets for a specific game
 * `dumpasset <type> <name>`: Dumps a single assset
+
+IW7 supports [reviewed soundbank subsets](docs/soundbank-subsets.md) and a
+metadata-only `-soundbank-catalog` command for isolating alias dependencies
+without exporting or repacking retail audio samples.
 * `dumpmap <map>`: Dumps all required assets for a map
 * `dumpmap <target game> <map> <asset filter> <skip common>`: Dumps and converts all required assets for a map
 
